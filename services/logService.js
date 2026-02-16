@@ -11,5 +11,4 @@ const logDownloadAttempt = (tokenHash, ip, status, reason) => {
         }
     );
 };
-
-module.exports = { logDownloadAttempt };
+module.exports={logDownloadAttempt};
