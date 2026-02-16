@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Secure File Dashboard</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>Dashboard</h2>
+    <button onclick="showSection('upload')">Upload</button>
+    <button onclick="showSection('generate')">Generate Link</button>
+    <button onclick="showSection('display')">Display Files</button>
+    <button onclick="showSection('logs')">Download Logs</button>
+</div>
+
+<div class="main">
+    <div class="header-title">
+        Secure File System
+    </div>
+
+    <div class="content-wrapper">
+        <div id="content"></div>
+    </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+    const content = document.getElementById("content");
+    const toast = document.getElementById("toast");
+
+    function showToast(message) {
+        toast.innerHTML = message;
+        toast.style.display = "block";
+        setTimeout(() => toast.style.display = "none",3000);
+    }
+
+    function showSection(section) {
+        if (section === "upload") {
+        content.innerHTML = `
+        <div class="card">
+            <h2>Upload File</h2>
+            <form id="uploadForm">
+
+                <label class="custom-file">
+                    <input type="file" name="file" id="fileInput" required />
+                    <span id="fileLabel">Choose File</span>
+                </label>
+
+                <button class="submit-btn" type="submit">
+                    Upload File
+                </button>
+            </form>
+        </div>
+    `   ;
+        attachUpload();
+        attachFilePreview();
+        }
+
+        if (section === "generate") {
+            content.innerHTML = `
+                <div class="card">
+                    <h2>Generate Download Link</h2>
+                    <form id="linkForm">
+                        <input type="number" name="file_id" placeholder="File ID" required />
+                        <input type="number" name="expiry_minutes" placeholder="Expiry (minutes)" required />
+                        <button class="submit-btn" type="submit">Generate Link</button>
+                    </form>
+                    <div id="linkResult"></div>
+                </div>
+            `;
+            attachLink();
+        }
+
+        if (section === "display") {
+            fetch("/files")
+            .then(res => res.json())
+            .then(data => {
+                let rows = data.map(file => `
+                    <tr>
+                        <td>${file.id}</td>
+                        <td>${file.original_name}</td>
+                    <td>${new Date(file.uploaded_at).toLocaleString()}</td>
+                    </tr>
+                `).join("");
+
+                content.innerHTML = `
+                    <div class="card">
+                        <h2>Uploaded Files</h2>
+                        <table>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Uploaded At</th>
+                            </tr>
+                            ${rows}
+                        </table>
+                    </div>
+                `;
+            });
+        }
+        if (section === "logs") {
+            fetch("/logs")
+            .then(res => res.json())
+            .then(logs => {
+        if (!Array.isArray(logs)) {
+            showToast("Failed to load logs");
+            return;
+        }
+
+        if (logs.length === 0) {
+            content.innerHTML = `
+                <div class="card">
+                    <h2>Download Logs</h2>
+                    <p>No logs available.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let rows = logs.map(log => {
+            let cleanReason = log.reason
+                .replaceAll("_", " ")
+                .toLowerCase()
+                .replace(/\b\w/g, c => c.toUpperCase());
+            return `
+                <tr>
+                    <td>${log.file_name}</td>
+                    <td>
+                        <span class="status ${log.status}">
+                            ${log.status}
+                        </span>
+                    </td>
+                    <td>${cleanReason}</td>
+                    <td>${new Date(log.timestamp).toLocaleString()}</td>
+                </tr>
+            `;
+        }).join("");
+
+        content.innerHTML = `
+            <div class="card logs-card">
+                <h2>Download Logs</h2>
+                <table>
+                    <tr>
+                        <th>File</th>
+                        <th>Status</th>
+                        <th>Reason</th>
+                        <th>Time</th>
+                    </tr>
+                    ${rows}
+                </table>
+            </div>
+        `;
+    })
+    .catch(err => {
+        console.error(err);
+        showToast("Failed to load log");
+    });
+    }
+}
+
+    function attachUpload() {
+    const form = document.getElementById("uploadForm");
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+
+        const res = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await res.json();
+
+        if (data.status === "success") {
+            showToast(data.message);
+            form.reset();
+            const fileLabel = document.getElementById("fileLabel");
+            if (fileLabel) {
+                fileLabel.innerText = "Choose File";
+            }
+        }
+    });
+}
+    function attachFilePreview() {
+    const fileInput = document.getElementById("fileInput");
+    const fileLabel = document.getElementById("fileLabel");
+
+    fileInput.addEventListener("change", function() {
+        if (this.files.length > 0) {
+            fileLabel.innerText = "Selected: " + this.files[0].name;
+        }
+    });
+}
+    function attachLink() {
+        document.getElementById("linkForm")
+        .addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+
+            const res = await fetch("/generate-link", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    file_id: formData.get("file_id"),
+                    expiry_minutes: formData.get("expiry_minutes")
+                })
+            });
+
+            const data = await res.json();
+            document.getElementById("linkResult").innerHTML = `
+                <p><strong>Link:</strong></p>
+                <input value="${data.link}" readonly />
+                <button onclick="navigator.clipboard.writeText('${data.link}')">Copy</button>
+            `;
+            showToast("Download link generated!");
+        });
+    }
+    showSection('upload');
+</script>
+
+</body>
+</html>
